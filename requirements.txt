@@ -1,0 +1,3 @@
+torch == 0.2.0_4
+tqdm
+nltk
