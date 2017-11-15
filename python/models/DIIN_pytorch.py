@@ -362,36 +362,39 @@ def dense_net(config, denseAttention, is_train):
     fm.resize_(shape_list[0], shape_list[1]*shape_list[2]*shape_list[3])
     return fm
 
-def dense_net_block(config, feature_map, growth_rate, layers, kernel_size, is_train, padding=0):
+def dense_net_block(config, feature_map, growth_rate, layers, kernel_size, is_train, padding):
     dim = feature_map.size()[-1]
-    print(growth_rate, kernel_size)
-    print('fm:',feature_map.size()) #70x48x48x134
+    #print(growth_rate, kernel_size) [20,3]
+    #print('fm:',feature_map.size()) #70x48x48x134
     list_of_features = [feature_map]
     features = feature_map
+
     for i in range(layers):
-        cnn2d = nn.Conv2d(features.size()[-1], growth_rate, (kernel_size, kernel_size), padding=padding)
-        print('fm_pre:',features.size())
+        cnn2d = nn.Conv2d(features.size()[-1], growth_rate, (kernel_size, kernel_size), padding=1)
+        #print('fm_pre:',features.size())
         fm = cnn2d(features.permute(0,3,1,2)).permute(0,2,3,1)
-        print('fm_cnn:',fm.size())
+        #print('fm_cnn:',fm.size())
         ft = F.relu(fm)
-        print('ft:',ft.size()) #[70, 46, 46, 20]
+        #print('ft:',ft.size()) #[70, 48, 48, 20]
         list_of_features.append(ft)  
         print(len(list_of_features))
         features = torch.cat(list_of_features, dim=3)
 
-    print("dense net block out shape") #, 48,48,294
+    print("dense net block out shape") # [70,48,48,294]
     print(list(features.size()))
     return features 
 
 def dense_net_transition_layer(config, feature_map, transition_rate):
     out_dim = int(feature_map.size()[-1] * transition_rate)
+    print('out_dim', out_dim) # 147
     cnn2d = nn.Conv2d(feature_map.size()[-1], out_dim, 1, padding=0)
-    feature_map = cnn2d(feature_map.permute(0,3,1,2)).permute(0,2,3,1)
-    max_pool = nn.MaxPool2d((2,2), (2,2), padding=0.0)
-    feature_map = max_pool(feature_map)
+    feature_map = cnn2d(feature_map.permute(0,3,1,2))
+    print('fm_dntl:', feature_map.size()) # [70, 147, 50, 50]
+    max_pool = nn.MaxPool2d((2,2), (2,2), padding=0)
+    feature_map = max_pool(feature_map).permute(0,2,3,1) 
     
     print("Transition Layer out shape")
-    print(list(feature_map.size())) # 24，24，147?
+    print(list(feature_map.size())) # 70, 24，24，147
     return feature_map
 
 
