@@ -9,10 +9,11 @@ import random
 from util import logger
 import util.parameters as params
 from util.data_processing import *
-from util.evaluate import *
+from util.evaluate_pytorch import *
 from tqdm import tqdm
 import gzip
 import pickle
+from memory_profiler import profile
 
 FIXED_PARAMETERS, config = params.load_parameters()
 modname = FIXED_PARAMETERS["model_name"]
@@ -90,7 +91,7 @@ else:
     pickle.dump(loaded_embeddings, f)
     f.close()
 
-
+#@profile
 def get_minibatch(dataset, start_index, end_index, training=False):
     indices = range(start_index, end_index)
 
@@ -116,12 +117,25 @@ def get_minibatch(dataset, start_index, end_index, training=False):
     premise_exact_match = np.expand_dims(premise_exact_match, 2)
     hypothesis_exact_match = np.expand_dims(hypothesis_exact_match, 2)
 
+    labels = torch.LongTensor(labels)
 
-    return premise_vectors, hypothesis_vectors, labels, genres, premise_pos_vectors, \
-            hypothesis_pos_vectors, pairIDs, premise_char_vectors, hypothesis_char_vectors, \
-            premise_exact_match, hypothesis_exact_match
+    minibatch_premise_vectors = torch.stack([torch.from_numpy(v) for v in premise_vectors]).squeeze()
+    minibatch_hypothesis_vectors = torch.stack([torch.from_numpy(v) for v in hypothesis_vectors]).squeeze()
+
+    minibatch_pre_pos = torch.stack([torch.from_numpy(v) for v in premise_pos_vectors]).squeeze()
+    minibatch_hyp_pos = torch.stack([torch.from_numpy(v) for v in hypothesis_pos_vectors]).squeeze()
+
+    premise_char_vectors = torch.stack([torch.from_numpy(v) for v in premise_char_vectors]).squeeze()
+    hypothesis_char_vectors = torch.stack([torch.from_numpy(v) for v in hypothesis_char_vectors]).squeeze()
+    premise_exact_match = torch.stack([torch.from_numpy(v) for v in premise_exact_match]).squeeze()
+    hypothesis_exact_match = torch.stack([torch.from_numpy(v) for v in hypothesis_exact_match]).squeeze()
+
+    return minibatch_premise_vectors, minibatch_hypothesis_vectors, labels, genres, \
+        minibatch_pre_pos, minibatch_hyp_pos, pairIDs, premise_char_vectors, hypothesis_char_vectors, \
+        premise_exact_match, hypothesis_exact_match
 
 
+#@profile
 def train(model, loss_, optim, batch_size, config, train_mnli, train_snli, dev_mat, dev_mismat, dev_snli):
     #sess_config = tf.ConfigProto()
     #sess_config.gpu_options.allow_growth=True   
@@ -151,7 +165,7 @@ def train(model, loss_, optim, batch_size, config, train_mnli, train_snli, dev_m
     #self.sess = None
     #self.saver = tf.train.Saver()
 
-    step = 0
+    step = 1
     epoch = 0
     best_dev_mat = 0.
     best_mtrain_acc = 0.
@@ -218,20 +232,25 @@ def train(model, loss_, optim, batch_size, config, train_mnli, train_snli, dev_m
             premise_exact_match, hypothesis_exact_match  = get_minibatch(
                 training_data, batch_size * i, batch_size * (i + 1), True)
             
-            minibatch_premise_vectors = Variable(torch.stack([torch.from_numpy(v) for v in minibatch_premise_vectors]).squeeze())
-            minibatch_hypothesis_vectors = Variable(torch.stack([torch.from_numpy(v) for v in minibatch_hypothesis_vectors]).squeeze())
-            #minibatch_genres = Variable(torch.stack([torch.from_numpy(v) for v in minibatch_genres]).squeeze())
-            minibatch_pre_pos = Variable(torch.stack([torch.from_numpy(v) for v in minibatch_pre_pos]).squeeze())
-            minibatch_hyp_pos = Variable(torch.stack([torch.from_numpy(v) for v in minibatch_hyp_pos]).squeeze())
-            #pairIDs = Variable(torch.stack([torch.from_numpy(v) for v in pairIDs]).squeeze())
-            premise_char_vectors = Variable(torch.stack([torch.from_numpy(v) for v in premise_char_vectors]).squeeze())
-            hypothesis_char_vectors = Variable(torch.stack([torch.from_numpy(v) for v in hypothesis_char_vectors]).squeeze())
-            premise_exact_match = Variable(torch.stack([torch.from_numpy(v) for v in premise_exact_match]).squeeze())
-            hypothesis_exact_match = Variable(torch.stack([torch.from_numpy(v) for v in hypothesis_exact_match]).squeeze())
+            if config.cuda:
+                minibatch_premise_vectors, minibatch_hypothesis_vectors, minibatch_labels, \
+                minibatch_pre_pos, minibatch_hyp_pos, premise_char_vectors, hypothesis_char_vectors, \
+                premise_exact_match, hypothesis_exact_match = minibatch_premise_vectors.cuda(), minibatch_hypothesis_vectors.cuda(), minibatch_labels.cuda(), \
+                minibatch_pre_pos.cuda(), minibatch_hyp_pos.cuda(), premise_char_vectors.cuda(), hypothesis_char_vectors.cuda(), \
+                premise_exact_match.cuda(), hypothesis_exact_match.cuda()           
 
-            #print(minibatch_labels)
-            minibatch_labels = torch.IntTensor(minibatch_labels)
-            #torch.stack([torch.LongTensor(v) for v in minibatch_labels]).squeeze()
+            minibatch_premise_vectors = Variable(minibatch_premise_vectors)
+            minibatch_hypothesis_vectors = Variable(minibatch_hypothesis_vectors)
+
+            minibatch_pre_pos = Variable(minibatch_pre_pos)
+            minibatch_hyp_pos = Variable(minibatch_hyp_pos)
+
+            premise_char_vectors = Variable(premise_char_vectors)
+            hypothesis_char_vectors = Variable(hypothesis_char_vectors)
+            premise_exact_match = Variable(premise_exact_match)
+            hypothesis_exact_match = Variable(hypothesis_exact_match)
+
+            minibatch_labels = Variable(minibatch_labels)
 
             model.zero_grad()
             # Run the optimizer to take a gradient step, and also fetch the value of the 
@@ -240,12 +259,13 @@ def train(model, loss_, optim, batch_size, config, train_mnli, train_snli, dev_m
             output = model(minibatch_premise_vectors, minibatch_hypothesis_vectors, \
                 minibatch_pre_pos, minibatch_hyp_pos, premise_char_vectors, hypothesis_char_vectors, \
                 premise_exact_match, hypothesis_exact_match)
+
             lossy = loss_(output, minibatch_labels)
             lossy.backward()
             torch.nn.utils.clip_grad_norm(model.parameters(), config.gradient_clip_value)
             optim.step()
 
-
+            print(step)
             if step % display_step == 0:
                 logger.Log("Step: {} completed".format(step))
 
@@ -348,7 +368,7 @@ def train(model, loss_, optim, batch_size, config, train_mnli, train_snli, dev_m
                 completed = True
                 break
 
-def classify(self, examples, completed, batch_size, model, loss_):
+def classify(examples, completed, batch_size, model, loss_):
     model.eval()
     # This classifies a list of examples
     if (test == True) or (completed == True):
@@ -374,14 +394,35 @@ def classify(self, examples, completed, batch_size, model, loss_):
             premise_exact_match, hypothesis_exact_match = get_minibatch(
                 examples, batch_size * i, len(examples))
 
+            
+        if config.cuda:
+            minibatch_premise_vectors, minibatch_hypothesis_vectors, minibatch_labels, \
+            minibatch_pre_pos, minibatch_hyp_pos, premise_char_vectors, hypothesis_char_vectors, \
+            premise_exact_match, hypothesis_exact_match = minibatch_premise_vectors.cuda(), minibatch_hypothesis_vectors.cuda(), minibatch_labels.cuda(), \
+            minibatch_pre_pos.cuda(), minibatch_hyp_pos.cuda(), premise_char_vectors.cuda(), hypothesis_char_vectors.cuda(), \
+            premise_exact_match.cuda(), hypothesis_exact_match.cuda()           
+
+        minibatch_premise_vectors = Variable(minibatch_premise_vectors)
+        minibatch_hypothesis_vectors = Variable(minibatch_hypothesis_vectors)
+
+        minibatch_pre_pos = Variable(minibatch_pre_pos)
+        minibatch_hyp_pos = Variable(minibatch_hyp_pos)
+
+        premise_char_vectors = Variable(premise_char_vectors)
+        hypothesis_char_vectors = Variable(hypothesis_char_vectors)
+        premise_exact_match = Variable(premise_exact_match)
+        hypothesis_exact_match = Variable(hypothesis_exact_match)
+
+        minibatch_labels = Variable(minibatch_labels)
+
         genres += minibatch_genres
         logit = model(minibatch_premise_vectors, minibatch_hypothesis_vectors, \
             minibatch_pre_pos, minibatch_hyp_pos, premise_char_vectors, hypothesis_char_vectors, \
             premise_exact_match, hypothesis_exact_match)
 
-        cost = loss_(output, minibatch_labels)
+        cost = loss_(logit, minibatch_labels)
         costs += cost
-        logits = np.vstack([logits, logit])
+        logits = np.vstack([logits, logit.data.numpy()])
 
     if test == True:
         logger.Log("Generating Classification error analysis script")
@@ -431,6 +472,27 @@ def generate_predictions_with_id(path, examples, completed, batch_size, model, l
             hypothesis_inverse_term_frequency, premise_antonym_feature, hypothesis_antonym_feature, premise_NER_feature, \
             hypothesis_NER_feature  = get_minibatch(
                 examples, batch_size * i, len(examples))
+
+        if config.cuda:
+            minibatch_premise_vectors, minibatch_hypothesis_vectors, minibatch_labels, \
+            minibatch_pre_pos, minibatch_hyp_pos, premise_char_vectors, hypothesis_char_vectors, \
+            premise_exact_match, hypothesis_exact_match = minibatch_premise_vectors.cuda(), minibatch_hypothesis_vectors.cuda(), minibatch_labels.cuda(), \
+            minibatch_pre_pos.cuda(), minibatch_hyp_pos.cuda(), premise_char_vectors.cuda(), hypothesis_char_vectors.cuda(), \
+            premise_exact_match.cuda(), hypothesis_exact_match.cuda()           
+
+        minibatch_premise_vectors = Variable(minibatch_premise_vectors)
+        minibatch_hypothesis_vectors = Variable(minibatch_hypothesis_vectors)
+
+        minibatch_pre_pos = Variable(minibatch_pre_pos)
+        minibatch_hyp_pos = Variable(minibatch_hyp_pos)
+
+        premise_char_vectors = Variable(premise_char_vectors)
+        hypothesis_char_vectors = Variable(hypothesis_char_vectors)
+        premise_exact_match = Variable(premise_exact_match)
+        hypothesis_exact_match = Variable(hypothesis_exact_match)
+
+        minibatch_labels = Variable(minibatch_labels)
+
         logit = model(minibatch_premise_vectors, minibatch_hypothesis_vectors, \
             minibatch_pre_pos, minibatch_hyp_pos, premise_char_vectors, hypothesis_char_vectors, \
             premise_exact_match, hypothesis_exact_match)
@@ -443,9 +505,15 @@ def generate_predictions_with_id(path, examples, completed, batch_size, model, l
 batch_size = FIXED_PARAMETERS["batch_size"]
 completed = False
 
+
+
 model = MyModel(config, FIXED_PARAMETERS["seq_length"], emb_dim=FIXED_PARAMETERS["word_embedding_dim"],  hidden_dim=FIXED_PARAMETERS["hidden_embedding_dim"], embeddings=loaded_embeddings, emb_train=FIXED_PARAMETERS["emb_train"])
 
-optim = torch.optim.Adadelta(model.parameters(), lr = FIXED_PARAMETERS["learning_rate"])
+if config.cuda:
+    model.cuda()
+
+#optim = torch.optim.Adadelta(model.parameters(), lr = FIXED_PARAMETERS["learning_rate"])
+optim = torch.optim.Adadelta(filter(lambda p: p.requires_grad, model.parameters()), lr = FIXED_PARAMETERS["learning_rate"])
 loss = nn.CrossEntropyLoss() 
 
 test = params.train_or_test()

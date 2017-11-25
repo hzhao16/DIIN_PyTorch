@@ -18,12 +18,15 @@ def linear(args, output_size, bias, bias_start=0.0, scope=None, squeeze=False, w
             args = [args]
 
         flat_args = [flatten(arg, 1) for arg in args]
+        print('flat_args:', len(flat_args), flat_args[0].get_shape()) # 1, b*448
         # if input_keep_prob < 1.0:
         assert is_train is not None
         flat_args = [tf.cond(is_train, lambda: tf.nn.dropout(arg, input_keep_prob), lambda: arg)
                          for arg in flat_args]
         flat_out = _linear(flat_args, output_size, bias)
+        print('linear flat out', flat_out.get_shape()) # b*448
         out = reconstruct(flat_out, args[0], 1)
+        print('out', out.get_shape()) 
         if squeeze:
             out = tf.squeeze(out, [len(args[0].get_shape().as_list())-1])
         if wd:

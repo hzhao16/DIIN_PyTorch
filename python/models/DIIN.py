@@ -62,6 +62,7 @@ class MyModel(object):
             char_emb_mat = tf.get_variable("char_emb_mat", shape=[config.char_vocab_size, config.char_emb_size])
             with tf.variable_scope("char") as scope:
                 char_pre = tf.nn.embedding_lookup(char_emb_mat, self.premise_char)
+                print("char_pre size: ", char_pre.get_shape().as_list())
                 char_hyp = tf.nn.embedding_lookup(char_emb_mat, self.hypothesis_char)
 
                 filter_sizes = list(map(int, config.out_channel_dims.split(','))) #[100]
@@ -119,6 +120,7 @@ class MyModel(object):
 
             premise_final = model_one_side(config, p, h, prem_seq_lengths, hyp_seq_lengths, prem_mask, hyp_mask, scope="premise_as_main")
             f0 = premise_final
+            print('f0:',f0.get_shape().as_list())
 
             
     
@@ -238,7 +240,7 @@ def bi_attention_mx(config, is_train, p, h, p_mask=None, h_mask=None, scope=None
 
         
         h_logits = p_aug * h_aug
-        
+        print('h_logis',h_logits.get_shape())
         return h_logits
 
 

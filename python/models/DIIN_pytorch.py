@@ -3,8 +3,10 @@ import torch.nn as nn
 from torch.autograd import Variable
 import torch.nn.functional as F
 import numpy as np
+import collections
 from util import blocks_torch
 from my.tensorflow.general_torch import flatten, reconstruct, exp_mask
+from memory_profiler import profile
 
 class DIIN(nn.Module):
     """Container module with an encoder, a recurrent module, and a decoder."""
@@ -23,18 +25,18 @@ class DIIN(nn.Module):
         self.dropout = nn.Dropout(p=0.0)
         if embeddings is not None:
             #print(embeddings.shape)
-
             self.emb = nn.Embedding(embeddings.shape[0], embeddings.shape[1], padding_idx=0)
-            #embeddings = torch.from_numpy(embeddings).type('torch.LongTensor')
             self.emb.weight.data.copy_(torch.from_numpy(embeddings).type('torch.LongTensor'))
-            #print(embeddings.size())
-            #self.emb.weight = embeddings
+            self.emb.weight.requires_grad = True
+
         self.char_emb_init = nn.Embedding(config.char_vocab_size, config.char_emb_size)
+        self.char_emb_init.weight.requires_grad = False
 
     def dropout_rate_decay(self, global_step, decay_rate=0.997):
         p = 1 - 1 * 0.997 ** (global_step / 10000)
         self.dropout_rate = p
 
+    @profile
     def forward(self, premise_x, hypothesis_x, \
                 pre_pos, hyp_pos, premise_char_vectors, hypothesis_char_vectors, \
                 premise_exact_match, hypothesis_exact_match):
@@ -50,19 +52,23 @@ class DIIN(nn.Module):
         #print(premise_in.size())
         hypothesis_in = F.dropout(self.emb(hypothesis_x.type('torch.LongTensor')), p = self.dropout_rate,  training=self.training)
 
+        #print("premise_char_vectors size", premise_char_vectors.size()) #[70, 48, 16]
         conv_pre, conv_hyp = self.char_emb(premise_char_vectors, hypothesis_char_vectors)
         #print(premise_in.size(), conv_pre.size())
         premise_in = torch.cat([premise_in, conv_pre], 2) #[70, 48, 300], [70, 48, 100] --> [70,48,400]
         hypothesis_in = torch.cat([hypothesis_in, conv_hyp], 2)
 
         pre_pos = pre_pos.type('torch.FloatTensor')
+        #print("pre_pos size:", pre_pos.size())
+        #print("pre_pos", pre_pos)
         premise_in = torch.cat([premise_in, pre_pos], 2) # 70*48*447
         #print(premise_in.size()) 
         hyp_pos = hyp_pos.type('torch.FloatTensor')
         hypothesis_in = torch.cat([hypothesis_in, hyp_pos], 2)
 
         premise_exact_match = torch.unsqueeze(premise_exact_match.type('torch.FloatTensor'),2) #70*48*1
-        #print(premise_exact_match.size()) 
+        #print("premise_exact_match size:", premise_exact_match.size()) 
+        #print("premise_exact_match: ", premise_exact_match)
         premise_in = torch.cat([premise_in, premise_exact_match], 2) #70*48*448
         #print(premise_in.size())
         hypothesis_exact_match = torch.unsqueeze(hypothesis_exact_match.type('torch.FloatTensor'),2)
@@ -75,10 +81,10 @@ class DIIN(nn.Module):
         pre = premise_in  #[70, 48, 448]
         hyp = hypothesis_in
         for i in range(self.config.self_att_enc_layers):
-            p = self_attention_layer(self.config, self.training, pre, input_drop_prob=self.dropout_rate, p_mask=prem_mask) # [N, len, dim]    
-            h = self_attention_layer(self.config, self.training, hyp, input_drop_prob=self.dropout_rate, p_mask=prem_mask)
-            pre = p
-            hyp = h
+            pre = self_attention_layer(self.config, self.training, pre, input_drop_prob=self.dropout_rate, p_mask=prem_mask) # [N, len, dim]    
+            hyp = self_attention_layer(self.config, self.training, hyp, input_drop_prob=self.dropout_rate, p_mask=prem_mask)
+            #pre = p
+            #hyp = h
 
         #print('pre:',pre.size())  #[70, 48, 448]
         def model_one_side(config, main, support, main_length, support_length, main_mask, support_mask):
@@ -87,10 +93,11 @@ class DIIN(nn.Module):
             out_final = dense_net(config, bi_att_mx, self.training)
             return out_final
 
-        premise_final = model_one_side(self.config, p, h, prem_seq_lengths, hyp_seq_lengths, prem_mask, hyp_mask)
+        premise_final = model_one_side(self.config, pre, hyp, prem_seq_lengths, hyp_seq_lengths, prem_mask, hyp_mask)
         f0 = premise_final
-
-        logits = linear(f0, self.pred_size ,True, bias_start=0.0, squeeze=False, wd=self.config.wd, input_drop_prob=self.config.keep_rate,
+        #print('f0:',f0)
+        #print(isinstance(f0, collections.Sequence))
+        logits = linear([f0], self.pred_size ,True, bias_start=0.0, squeeze=False, wd=self.config.wd, input_drop_prob=self.config.keep_rate,
                                 is_train=self.training)
 
         return logits
@@ -148,18 +155,22 @@ class DIIN(nn.Module):
    	
 def linear(data_in, output_size, bias, bias_start=0.0, squeeze=False, wd=0.0, input_drop_prob=0, is_train = None):
     flat_datas = [flatten(data, 1) for data in data_in]
+    #print('flat_datas,',len(flat_datas),flat_datas[0].size())
     assert is_train is not None
     flat_datas = [F.dropout(data, p=input_drop_prob, training=is_train) for data in flat_datas]
     #print(len(flat_datas))
-    flat_out = 0
-    for data in flat_datas:
-        #print(data)  #3360x448
-        _linear = nn.Linear(data.size()[-1], output_size, bias=bias)
-        #print(_linear(data))
-        flat_out += _linear(data)
 
+    total_data_size = sum([data.size()[1] for data in flat_datas])
+    _linear = nn.Linear(total_data_size, output_size, bias=bias)
+
+    if len(flat_datas) > 1:
+        flat_datas = torch.cat(flat_datas, 1)
+    else:
+        flat_datas = flat_datas[0]
+    flat_out = _linear(flat_datas)
+    #print("flat_out size, ", flat_out.size())
     out = reconstruct(flat_out, data_in[0], 1)
-    #print(out.size())
+    #print("out size, ", out.size())
     if squeeze:
         #print(len(list(data_in[0].size()))-1) #3
         out = torch.squeeze(out, len(list(data_in[0].size()))-1)
@@ -185,7 +196,7 @@ def highway_network(data_in, num_layers, bias, bias_start=0.0, wd=0.0, input_dro
     for layer_idx in range(num_layers):
         cur = highway_layer(prev, bias, bias_start=bias_start, wd=wd, 
             input_drop_prob=input_drop_prob, is_train=is_train, output_size = output_size)
-    prev = cur
+        prev = cur
     return cur
 
 
@@ -213,8 +224,8 @@ def self_attention_layer(config, is_train, p, input_drop_prob, p_mask=None):
     PL = p.size()[1]
     self_att = self_attention(config, is_train, p, p_mask=p_mask)
 
-    print("self_att shape")
-    print(self_att.size())  # [70, 48, 448]
+    #print("self_att shape")
+    #print(self_att.size())  # [70, 48, 448]
 
     p0 = fuse_gate(config, is_train, p, self_att, input_drop_prob)
     
@@ -330,6 +341,7 @@ def bi_attention_mx(config, is_train, p, h, p_mask=None, h_mask=None): #[N, L, 2
     p_aug = torch.unsqueeze(p, 2).repeat(1,1,HL,1)
     h_aug = torch.unsqueeze(h, 1).repeat(1,PL,1,1) #[N, PL, HL, 2d]
 
+    """
     if p_mask is None:
         ph_mask = None
     else:
@@ -338,12 +350,14 @@ def bi_attention_mx(config, is_train, p, h, p_mask=None, h_mask=None): #[N, L, 2
         ph_mask = Variable(torch.from_numpy((p_mask_aug & h_mask_aug).astype(int)).type('torch.FloatTensor'))
 
     ph_mask = None##########################??????????????????????
-    h_logits = p_aug * h_aug    
+    """
+    h_logits = p_aug * h_aug
+    #print('h_logis',h_logits.size())    
     return h_logits
 
 def dense_net(config, denseAttention, is_train):
     dim = denseAttention.size()[-1]
-    print('dense_net_conv:', dim * config.dense_net_first_scale_down_ratio, config.first_scale_down_kernel)
+    #print('dense_net_conv:', dim * config.dense_net_first_scale_down_ratio, config.first_scale_down_kernel)
     cnn2d = nn.Conv2d(denseAttention.size()[-1], int(dim * config.dense_net_first_scale_down_ratio), config.first_scale_down_kernel, padding=0)
     fm = cnn2d(denseAttention.permute(0,3,1,2)).permute(0,2,3,1) 
     #print('fm:',fm.size()) # [70, 48, 48, 134]
@@ -358,11 +372,12 @@ def dense_net(config, denseAttention, is_train):
     fm = dense_net_transition_layer(config, fm, config.dense_net_transition_rate)
 
     shape_list = fm.size()
-    print(shape_list)
-    fm.resize_(shape_list[0], shape_list[1]*shape_list[2]*shape_list[3])
+    #print('shape_list:',shape_list)
+    fm = fm.contiguous().view(shape_list[0], shape_list[1]*shape_list[2]*shape_list[3])
+    #print(fm)
     return fm
 
-def dense_net_block(config, feature_map, growth_rate, layers, kernel_size, is_train, padding):
+def dense_net_block(config, feature_map, growth_rate, layers, kernel_size, is_train, padding=0):
     dim = feature_map.size()[-1]
     #print(growth_rate, kernel_size) [20,3]
     #print('fm:',feature_map.size()) #70x48x48x134
@@ -377,7 +392,7 @@ def dense_net_block(config, feature_map, growth_rate, layers, kernel_size, is_tr
         ft = F.relu(fm)
         #print('ft:',ft.size()) #[70, 48, 48, 20]
         list_of_features.append(ft)  
-        print(len(list_of_features))
+        #print(len(list_of_features))
         features = torch.cat(list_of_features, dim=3)
 
     print("dense net block out shape") # [70,48,48,294]
@@ -386,15 +401,15 @@ def dense_net_block(config, feature_map, growth_rate, layers, kernel_size, is_tr
 
 def dense_net_transition_layer(config, feature_map, transition_rate):
     out_dim = int(feature_map.size()[-1] * transition_rate)
-    print('out_dim', out_dim) # 147
+    #print('out_dim', out_dim) # 147
     cnn2d = nn.Conv2d(feature_map.size()[-1], out_dim, 1, padding=0)
     feature_map = cnn2d(feature_map.permute(0,3,1,2))
-    print('fm_dntl:', feature_map.size()) # [70, 147, 50, 50]
+    #print('fm_dntl:', feature_map.size()) # [70, 147, 48, 48]
     max_pool = nn.MaxPool2d((2,2), (2,2), padding=0)
     feature_map = max_pool(feature_map).permute(0,2,3,1) 
     
-    print("Transition Layer out shape")
-    print(list(feature_map.size())) # 70, 24，24，147
+    #print("Transition Layer out shape")
+    #print(list(feature_map.size())) # [70, 24，24，147]
     return feature_map
 
 

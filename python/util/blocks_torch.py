@@ -17,6 +17,10 @@ def length(sequence):
     length: (batch_size)
     mask: (batch_size, max_seq_length, 1)
     """
+    #sequence = torch.from_numpy(sequence).type('torch.FloatTensor')
+    if isinstance(sequence, np.ndarray):
+        sequence = Variable(torch.from_numpy(sequence).type('torch.FloatTensor'))
+    #print('type:',type(sequence))
     populated = torch.sign(torch.abs(sequence))
     length = torch.sum(populated, 1)
     length = length.type('torch.IntTensor')

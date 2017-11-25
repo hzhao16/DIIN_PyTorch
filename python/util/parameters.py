@@ -29,8 +29,10 @@ def subtypes(s):
 
 pa = parser.add_argument
 
-pa("model_type", choices=models, type=types, help="Give model type.")
-pa("model_name", type=str, help="Give model name, this will name logs and checkpoints made. For example cbow, esim_test etc.")
+pa("--model_type", choices=models, type=types, default= "DIIN_pytorch", help="Give model type.")
+pa("--model_name", type=str, default="demo_testing_SNLI", help="Give model name, this will name logs and checkpoints made. For example cbow, esim_test etc.")
+
+pa("--cuda", action='store_true', help="cuda")
 
 pa("--datapath", type=str, default="../data")
 pa("--ckptpath", type=str, default="../logs")
@@ -56,12 +58,12 @@ pa("--logit_func", type=str, default="tri_linear", help='logit function')
 pa("--dense_att_logit_func", type=str, default="tri_linear", help='logit function on dense attention')
 
 pa("--self_att_logit_func", type=str, default="tri_linear", help='logit function')
-pa("--debug_model", action='store_true', help="debug model")
+pa("--debug_model", default=True, action='store_true', help="debug model")
 pa("--batch_size", type=int, default=70, help="batch size") ####
 pa("--display_step", type=int, default=50, help='display steps')
 pa("--eval_step", type=int, default=1000, help='eval step')
 pa("--l2_regularization_ratio", type=float, default=9e-5, help='l2 regularization ratio') ##
-pa("--training_completely_on_snli", action='store_true', help='train completely on snli')
+pa("--training_completely_on_snli", default=True, action='store_true', help='train completely on snli')
 pa("--use_lr_decay",action='store_true',help='lr decay')
 # pa("--lr_decay_rate", type=float, default=0.99, help='lr decay rate')
 pa("--use_label_smoothing", action='store_true', help='label smoothing')
@@ -185,6 +187,8 @@ pa("--visualize_dense_attention_logits", action='store_true', help='visualize th
 
 
 args = parser.parse_args()
+#args.model_type = "DIIN_pytorch"
+#args.model_name = "demo_testing_SNLI"
 
 def load_parameters():
     FIXED_PARAMETERS = {
