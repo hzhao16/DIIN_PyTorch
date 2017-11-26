@@ -251,16 +251,16 @@ def train(model, loss_, optim, batch_size, config, train_mnli, train_snli, dev_m
                 minibatch_pre_pos.cuda(), minibatch_hyp_pos.cuda(), premise_char_vectors.cuda(), hypothesis_char_vectors.cuda(), \
                 premise_exact_match.cuda(), hypothesis_exact_match.cuda()           
 
-            minibatch_premise_vectors = Variable(minibatch_premise_vectors)
-            minibatch_hypothesis_vectors = Variable(minibatch_hypothesis_vectors)
+            minibatch_premise_vectors = Variable(minibatch_premise_vectors,requires_grad=True)
+            minibatch_hypothesis_vectors = Variable(minibatch_hypothesis_vectors,requires_grad=True)
 
-            minibatch_pre_pos = Variable(minibatch_pre_pos)
-            minibatch_hyp_pos = Variable(minibatch_hyp_pos)
+            minibatch_pre_pos = Variable(minibatch_pre_pos,requires_grad=False)
+            minibatch_hyp_pos = Variable(minibatch_hyp_pos,requires_grad=False)
 
             premise_char_vectors = Variable(premise_char_vectors)
             hypothesis_char_vectors = Variable(hypothesis_char_vectors)
-            premise_exact_match = Variable(premise_exact_match)
-            hypothesis_exact_match = Variable(hypothesis_exact_match)
+            premise_exact_match = Variable(premise_exact_match,requires_grad=False)
+            hypothesis_exact_match = Variable(hypothesis_exact_match,requires_grad=False)
 
             minibatch_labels = Variable(minibatch_labels)
 
@@ -271,17 +271,17 @@ def train(model, loss_, optim, batch_size, config, train_mnli, train_snli, dev_m
             output = model(minibatch_premise_vectors, minibatch_hypothesis_vectors, \
                 minibatch_pre_pos, minibatch_hyp_pos, premise_char_vectors, hypothesis_char_vectors, \
                 premise_exact_match, hypothesis_exact_match)
-            print("Finish forward")
+            logger.Log("Finish forward")
             #pdb.set_trace()
-            print(model.parameters())
+            #print(model.parameters())
             lossy = loss_(output, minibatch_labels)
-            print("loss", lossy)
+            logger.Log("loss", lossy.data[0])
             lossy.backward()
-            print("Finish backward", step)
+            logger.Log("Finish backward{}".format(step))
             #torch.nn.utils.clip_grad_norm(model.parameters(), config.gradient_clip_value)
             optim.step()
 
-            print(step)
+            #print(step)
             if step % display_step == 0:
                 logger.Log("Step: {} completed".format(step))
 
@@ -302,6 +302,7 @@ def train(model, loss_, optim, batch_size, config, train_mnli, train_snli, dev_m
                     dev_acc_mismat, dev_cost_mismat, dev_acc_snli, dev_cost_snli = 0,0,0,0
 
                 if dont_print_unnecessary_info and config.training_completely_on_snli:
+                    print("mtrain_acc init")
                     mtrain_acc, mtrain_cost, = 0, 0
                 else:
                     mtrain_acc, mtrain_cost, _ = evaluate_classifier(classify, train_mnli[0:5000], batch_size, completed, model, loss_)
@@ -322,6 +323,7 @@ def train(model, loss_, optim, batch_size, config, train_mnli, train_snli, dev_m
             if step % save_step == 0:
                 torch.save(model, ckpt_file)
                 if config.training_completely_on_snli:
+                    print("mtrain acc cal")
                     dev_acc_mat = dev_acc_snli
                     mtrain_acc = strain_acc
                 best_test = 100 * (1 - best_dev_mat / dev_acc_mat)
