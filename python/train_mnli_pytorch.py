@@ -14,6 +14,7 @@ from tqdm import tqdm
 import gzip
 import pickle
 from memory_profiler import profile
+#import pdb
 
 FIXED_PARAMETERS, config = params.load_parameters()
 modname = FIXED_PARAMETERS["model_name"]
@@ -45,10 +46,14 @@ logger.Log("FIXED_PARAMETERS\n %s" % FIXED_PARAMETERS)
 
 if config.debug_model:
     # training_snli, dev_snli, test_snli, training_mnli, dev_matched, dev_mismatched, test_matched, test_mismatched = [],[],[],[],[],[], [], []
-    test_matched = load_nli_data(FIXED_PARAMETERS["dev_matched"], shuffle = False)[:499]
-    training_snli, dev_snli, test_snli, training_mnli, dev_matched, dev_mismatched, test_mismatched = test_matched, test_matched,test_matched,test_matched,test_matched,test_matched,test_matched
-    indices_to_words, word_indices, char_indices, indices_to_chars = sentences_to_padded_index_sequences([test_matched])
-    shared_content = load_mnli_shared_content()
+    #@profile
+    def load():
+        test_matched = load_nli_data(FIXED_PARAMETERS["dev_matched"], shuffle = False)[:499]
+        training_snli, dev_snli, test_snli, training_mnli, dev_matched, dev_mismatched, test_mismatched = test_matched, test_matched,test_matched,test_matched,test_matched,test_matched,test_matched
+        indices_to_words, word_indices, char_indices, indices_to_chars = sentences_to_padded_index_sequences([test_matched])
+        shared_content = load_mnli_shared_content()
+        return test_matched, training_snli, dev_snli, test_snli, training_mnli, dev_matched, dev_mismatched, test_mismatched, indices_to_words, word_indices, char_indices, indices_to_chars, shared_content
+    test_matched, training_snli, dev_snli, test_snli, training_mnli, dev_matched, dev_mismatched, test_mismatched, indices_to_words, word_indices, char_indices, indices_to_chars, shared_content = load()
 else:
 
     logger.Log("Loading data SNLI")
@@ -71,25 +76,29 @@ else:
 
 config.char_vocab_size = len(char_indices.keys())
 
+#@profile
+def embedding():
+    embedding_dir = os.path.join(config.datapath, "embeddings")
+    if not os.path.exists(embedding_dir):
+        os.makedirs(embedding_dir)
 
-embedding_dir = os.path.join(config.datapath, "embeddings")
-if not os.path.exists(embedding_dir):
-    os.makedirs(embedding_dir)
 
+    embedding_path = os.path.join(embedding_dir, "mnli_emb_snli_embedding.pkl.gz")
 
-embedding_path = os.path.join(embedding_dir, "mnli_emb_snli_embedding.pkl.gz")
+    print("embedding path exist")
+    print(os.path.exists(embedding_path))
+    if os.path.exists(embedding_path):
+        f = gzip.open(embedding_path, 'rb')
+        loaded_embeddings = pickle.load(f)
+        f.close()
+    else:
+        loaded_embeddings = loadEmbedding_rand(FIXED_PARAMETERS["embedding_data_path"], word_indices)
+        f = gzip.open(embedding_path, 'wb')
+        pickle.dump(loaded_embeddings, f)
+        f.close()
+    return loaded_embeddings
+loaded_embeddings = embedding()
 
-print("embedding path exist")
-print(os.path.exists(embedding_path))
-if os.path.exists(embedding_path):
-    f = gzip.open(embedding_path, 'rb')
-    loaded_embeddings = pickle.load(f)
-    f.close()
-else:
-    loaded_embeddings = loadEmbedding_rand(FIXED_PARAMETERS["embedding_data_path"], word_indices)
-    f = gzip.open(embedding_path, 'wb')
-    pickle.dump(loaded_embeddings, f)
-    f.close()
 
 #@profile
 def get_minibatch(dataset, start_index, end_index, training=False):
@@ -143,7 +152,8 @@ def train(model, loss_, optim, batch_size, config, train_mnli, train_snli, dev_m
     #self.sess.run(self.init)
 
     display_epoch_freq = 1
-    display_step = config.display_step
+    #display_step = config.display_step
+    display_step = 1
     eval_step = config.eval_step
     save_step = config.eval_step
     embedding_dim = FIXED_PARAMETERS["word_embedding_dim"]
@@ -177,6 +187,8 @@ def train(model, loss_, optim, batch_size, config, train_mnli, train_snli, dev_m
 
     # Restore most recent checkpoint if it exists. 
     # Also restore values for best dev-set accuracy and best training-set accuracy
+
+
     ckpt_file = os.path.join(FIXED_PARAMETERS["ckpt_path"], modname) + ".ckpt"
     if os.path.isfile(ckpt_file + ".meta"):
         if os.path.isfile(ckpt_file + "_best.meta"):
@@ -259,10 +271,14 @@ def train(model, loss_, optim, batch_size, config, train_mnli, train_snli, dev_m
             output = model(minibatch_premise_vectors, minibatch_hypothesis_vectors, \
                 minibatch_pre_pos, minibatch_hyp_pos, premise_char_vectors, hypothesis_char_vectors, \
                 premise_exact_match, hypothesis_exact_match)
-
+            print("Finish forward")
+            #pdb.set_trace()
+            print(model.parameters())
             lossy = loss_(output, minibatch_labels)
+            print("loss", lossy)
             lossy.backward()
-            torch.nn.utils.clip_grad_norm(model.parameters(), config.gradient_clip_value)
+            print("Finish backward", step)
+            #torch.nn.utils.clip_grad_norm(model.parameters(), config.gradient_clip_value)
             optim.step()
 
             print(step)
@@ -302,7 +318,7 @@ def train(model, loss_, optim, batch_size, config, train_mnli, train_snli, dev_m
                 else:
                     logger.Log("Step: %i\t Dev-matched acc: %f\t Dev-mismatched acc: %f\t Dev-SNLI acc: %f\t MultiNLI train acc: %f" %(step, dev_acc_mat, dev_acc_mismat, dev_acc_snli, mtrain_acc))
                     logger.Log("Step: %i\t Dev-matched cost: %f\t Dev-mismatched cost: %f\t Dev-SNLI cost: %f\t MultiNLI train cost: %f" %(step, dev_cost_mat, dev_cost_mismat, dev_cost_snli, mtrain_cost))
-
+            
             if step % save_step == 0:
                 torch.save(model, ckpt_file)
                 if config.training_completely_on_snli:
@@ -341,20 +357,21 @@ def train(model, loss_, optim, batch_size, config, train_mnli, train_snli, dev_m
             step += 1
 
             # Compute average loss
-            avg_cost += lossy / (total_batch * batch_size)
+            avg_cost += lossy.data[0] / (total_batch * batch_size)
                             
         # Display some statistics about the epoch
         if epoch % display_epoch_freq == 0:
             logger.Log("Epoch: %i\t Avg. Cost: %f" %(epoch+1, avg_cost))
-        
+        print("Epoch: %i\t Avg. Cost: %f" %(epoch+1, avg_cost))
         epoch += 1 
+
         last_train_acc[(epoch % 5) - 1] = mtrain_acc
 
         # Early stopping
         early_stopping_step = 35000
         progress = 1000 * (sum(last_train_acc)/(5 * min(last_train_acc)) - 1) 
 
-
+        
         if (progress < 0.1) or (step > best_step + early_stopping_step):
             logger.Log("Best matched-dev accuracy: %s" %(best_dev_mat))
             logger.Log("MultiNLI Train accuracy: %s" %(best_mtrain_acc))
@@ -367,6 +384,7 @@ def train(model, loss_, optim, batch_size, config, train_mnli, train_snli, dev_m
             else:
                 completed = True
                 break
+
 
 def classify(examples, completed, batch_size, model, loss_):
     model.eval()
