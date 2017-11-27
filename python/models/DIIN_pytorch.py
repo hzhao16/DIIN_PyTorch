@@ -46,7 +46,7 @@ class DIIN(nn.Module):
         self.dense_net = DenseNet(134, config.dense_net_growth_rate, config.dense_net_transition_rate, config.dense_net_layers, config.dense_net_kernel_size)
 
     def dropout_rate_decay(self, global_step, decay_rate=0.997):
-        p = 1 - 1 * 0.997 ** (global_step / 10000)
+        p = 1 - 1 * decay_rate ** (global_step / 10000)
         self.dropout_rate = p
 
     #@profile
