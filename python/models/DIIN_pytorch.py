@@ -23,14 +23,28 @@ class DIIN(nn.Module):
         self.query_seq_len = query_seq_len
         self.dropout_rate = dropout_rate
         self.config = config
-        self.dropout = nn.Dropout(p=0.0)
+        #self.dropout = nn.Dropout(p=0.0)
 
         self.char_emb_cnn = nn.Conv2d(8, 100, (1, 5), stride=(1, 1, 1, 1), padding=0, bias=True)
         self.interaction_cnn = nn.Conv2d(448, int(448 * config.dense_net_first_scale_down_ratio), config.first_scale_down_kernel, padding=0)
 
         self.highway_network_linear = nn.Linear(448, 448, bias=True)
-        self.self_attention_linear = nn.Linear(1344, 1, bias=True)
-        self.fuse_gate_linear = nn.Linear(config.batch_size*448, 448, bias=True)
+        self.self_attention_linear_p = nn.Linear(1344, 1, bias=True)
+        self.self_attention_linear_h = nn.Linear(1344, 1, bias=True)
+
+        self.fuse_gate_linear_p1 = nn.Linear(config.batch_size*448, 448, bias=True)
+        self.fuse_gate_linear_p2 = nn.Linear(config.batch_size*448, 448, bias=True)
+        self.fuse_gate_linear_p3 = nn.Linear(config.batch_size*448, 448, bias=True)
+        self.fuse_gate_linear_p4 = nn.Linear(config.batch_size*448, 448, bias=True)
+        self.fuse_gate_linear_p5 = nn.Linear(config.batch_size*448, 448, bias=True)
+        self.fuse_gate_linear_p6 = nn.Linear(config.batch_size*448, 448, bias=True)
+        self.fuse_gate_linear_h1 = nn.Linear(config.batch_size*448, 448, bias=True)
+        self.fuse_gate_linear_h2 = nn.Linear(config.batch_size*448, 448, bias=True)
+        self.fuse_gate_linear_h3 = nn.Linear(config.batch_size*448, 448, bias=True)
+        self.fuse_gate_linear_h4 = nn.Linear(config.batch_size*448, 448, bias=True)
+        self.fuse_gate_linear_h5 = nn.Linear(config.batch_size*448, 448, bias=True)
+        self.fuse_gate_linear_h6 = nn.Linear(config.batch_size*448, 448, bias=True)
+
         self.final_linear = nn.Linear(5616, 3, bias=True)
         self.test_linear = nn.Linear(308736, 3, bias=True)
 
@@ -98,8 +112,8 @@ class DIIN(nn.Module):
         #import pdb
         
         for i in range(self.config.self_att_enc_layers):
-            pre = self_attention_layer(self.self_attention_linear, self.fuse_gate_linear, self.config, self.training, pre, input_drop_prob=self.dropout_rate, p_mask=prem_mask) # [N, len, dim]    
-            hyp = self_attention_layer(self.self_attention_linear, self.fuse_gate_linear, self.config, self.training, hyp, input_drop_prob=self.dropout_rate, p_mask=prem_mask)
+            pre = self_attention_layer(self.self_attention_linear_p, self.fuse_gate_linear_p1, self.fuse_gate_linear_p2, self.fuse_gate_linear_p3, self.fuse_gate_linear_p4, self.fuse_gate_linear_p5, self.fuse_gate_linear_p6, self.config, self.training, pre, input_drop_prob=self.dropout_rate, p_mask=prem_mask) # [N, len, dim]    
+            hyp = self_attention_layer(self.self_attention_linear_h, self.fuse_gate_linear_h1, self.fuse_gate_linear_h2, self.fuse_gate_linear_h3, self.fuse_gate_linear_h4, self.fuse_gate_linear_h5, self.fuse_gate_linear_h6, self.config, self.training, hyp, input_drop_prob=self.dropout_rate, p_mask=prem_mask)
             #pre = p
             #hyp = h
         #print("self_attention pre", type(pre))
@@ -260,32 +274,32 @@ def self_attention(linear_layer, config, is_train, p, p_mask=None): #[N, L, 2d]
     self_att = softsel(p_aug_2, h_logits) 
     return self_att
 
-def self_attention_layer(self_attention_layer, fuse_gate_linear, config, is_train, p, input_drop_prob, p_mask=None):
+def self_attention_layer(self_attention_layer, fuse_gate_linear1, fuse_gate_linear2, fuse_gate_linear3, fuse_gate_linear4, fuse_gate_linear5, fuse_gate_linear6, config, is_train, p, input_drop_prob, p_mask=None):
     PL = p.size()[1]
     self_att = self_attention(self_attention_layer, config, is_train, p, p_mask=p_mask)
 
     #print("self_att shape")
     #print(self_att.size())  # [70, 48, 448]
 
-    p0 = fuse_gate(fuse_gate_linear, config, is_train, p, self_att, input_drop_prob)
+    p0 = fuse_gate(fuse_gate_linear1, fuse_gate_linear2, fuse_gate_linear3, fuse_gate_linear4, fuse_gate_linear5, fuse_gate_linear6, config, is_train, p, self_att, input_drop_prob)
     
     return p0
 
-def fuse_gate(fuse_gate_linear, config, is_train, lhs, rhs, input_drop_prob):
+def fuse_gate(fuse_gate_linear1, fuse_gate_linear2, fuse_gate_linear3, fuse_gate_linear4, fuse_gate_linear5, fuse_gate_linear6, config, is_train, lhs, rhs, input_drop_prob):
     dim = list(lhs.size())[-1]
-    lhs_1 = linear(fuse_gate_linear, lhs, dim ,True, bias_start=0.0, squeeze=False, wd=config.wd, input_drop_prob=input_drop_prob, is_train=is_train)
-    rhs_1 = linear(fuse_gate_linear, rhs, dim ,True, bias_start=0.0, squeeze=False, wd=0.0, input_drop_prob=input_drop_prob, is_train=is_train)
+    lhs_1 = linear(fuse_gate_linear1, lhs, dim ,True, bias_start=0.0, squeeze=False, wd=config.wd, input_drop_prob=input_drop_prob, is_train=is_train)
+    rhs_1 = linear(fuse_gate_linear2, rhs, dim ,True, bias_start=0.0, squeeze=False, wd=0.0, input_drop_prob=input_drop_prob, is_train=is_train)
     if config.self_att_fuse_gate_residual_conn and config.self_att_fuse_gate_relu_z:
         z = F.relu(lhs_1 + rhs_1)
     else:
         z = F.tanh(lhs_1 + rhs_1)
-    lhs_2 = linear(fuse_gate_linear, lhs, dim ,True, bias_start=0.0, squeeze=False, wd=config.wd, input_drop_prob=input_drop_prob, is_train=is_train)
-    rhs_2 = linear(fuse_gate_linear, rhs, dim ,True, bias_start=0.0, squeeze=False, wd=config.wd, input_drop_prob=input_drop_prob, is_train=is_train)
+    lhs_2 = linear(fuse_gate_linear3, lhs, dim ,True, bias_start=0.0, squeeze=False, wd=config.wd, input_drop_prob=input_drop_prob, is_train=is_train)
+    rhs_2 = linear(fuse_gate_linear4, rhs, dim ,True, bias_start=0.0, squeeze=False, wd=config.wd, input_drop_prob=input_drop_prob, is_train=is_train)
     f = F.sigmoid(lhs_2 + rhs_2)
     #print(config.two_gate_fuse_gate)
     if config.two_gate_fuse_gate:
-        lhs_3 = linear(fuse_gate_linear, lhs, dim ,True, bias_start=0.0, squeeze=False, wd=config.wd, input_drop_prob=input_drop_prob, is_train=is_train)
-        rhs_3 = linear(fuse_gate_linear, rhs, dim ,True, bias_start=0.0, squeeze=False, wd=config.wd, input_drop_prob=input_drop_prob, is_train=is_train)
+        lhs_3 = linear(fuse_gate_linear5, lhs, dim ,True, bias_start=0.0, squeeze=False, wd=config.wd, input_drop_prob=input_drop_prob, is_train=is_train)
+        rhs_3 = linear(fuse_gate_linear6, rhs, dim ,True, bias_start=0.0, squeeze=False, wd=config.wd, input_drop_prob=input_drop_prob, is_train=is_train)
         f2 = F.sigmoid(lhs_3 + rhs_3)
         out = f * lhs + f2 * z
     else:   
