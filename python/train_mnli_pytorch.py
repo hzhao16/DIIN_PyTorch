@@ -305,7 +305,7 @@ def train(model, loss_, optim, batch_size, config, train_mnli, train_snli, dev_m
 
                 if dont_print_unnecessary_info and config.training_completely_on_snli:
                     print("mtrain_acc init")
-                    mtrain_acc, mtrain_cost, = 0, 0
+                    mtrain_acc, mtrain_cost = 0.0, 0.0
                 else:
                     mtrain_acc, mtrain_cost, _ = evaluate_classifier(classify, train_mnli[0:5000], batch_size, completed, model, loss_)
                 
@@ -400,7 +400,7 @@ def classify(examples, completed, batch_size, model, loss_):
 
     total_batch = int(len(examples) / batch_size)
     pred_size = 3 
-    #logits = np.empty(pred_size)
+    logits = np.empty(pred_size)
     total = 0
     genres = []
     costs = 0
@@ -438,24 +438,25 @@ def classify(examples, completed, batch_size, model, loss_):
         hypothesis_exact_match = Variable(hypothesis_exact_match)
 
         minibatch_labels = Variable(minibatch_labels)
-        logger.Log("Classsify - finish loading")
+        #logger.Log("Classsify - finish loading")
         genres += minibatch_genres
-        logger.Log("genre".format(genres))
+        #logger.Log("genre".format(genres))
         logit = model(minibatch_premise_vectors, minibatch_hypothesis_vectors, \
             minibatch_pre_pos, minibatch_hyp_pos, premise_char_vectors, hypothesis_char_vectors, \
             premise_exact_match, hypothesis_exact_match)
-        logger.Log("Classsify - finish forward")
+        #logger.Log("Classsify - finish forward")
         cost = loss_(logit, minibatch_labels)
-        logger.Log("Classsify - finish cost")
+        #logger.Log("Classsify - finish cost")
         costs += cost
-        predicted = torch.max(logit.data, 1)[1]
-        total += minibatch_labels.size(0)
+        #predicted = torch.max(logit.data, 1)[1]
+        #total += minibatch_labels.size(0)
+        #return correct / float(total), costs, 0
         #print(predicted)
         #print(minibatch_labels.data)
-        correct += (predicted == minibatch_labels.data).sum()
+        #correct += (predicted == minibatch_labels.data).sum()
         logger.Log('correct'.format(correct))
-        #logits = np.vstack([logits, logit.data.numpy()])
-    return correct / float(total), costs, 0
+        logits = np.vstack([logits, logit.data.numpy()])
+    
     '''
     if test == True:
         logger.Log("Generating Classification error analysis script")
@@ -478,7 +479,7 @@ def classify(examples, completed, batch_size, model, loss_):
         correct_file.close()
         wrong_file.close()
     '''
-    #return genres, np.argmax(logits[1:], axis=1), costs
+    return genres, np.argmax(logits[1:], axis=1), costs
 
 def generate_predictions_with_id(path, examples, completed, batch_size, model, loss_):
     if (test == True) or (completed == True):

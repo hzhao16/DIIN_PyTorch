@@ -30,7 +30,7 @@ class DIIN(nn.Module):
 
         self.highway_network_linear = nn.Linear(448, 448, bias=True)
         self.self_attention_linear = nn.Linear(1344, 1, bias=True)
-        self.fuse_gate_linear = nn.Linear(31360, 448, bias=True)
+        self.fuse_gate_linear = nn.Linear(config.batch_size*448, 448, bias=True)
         self.final_linear = nn.Linear(5616, 3, bias=True)
         self.test_linear = nn.Linear(308736, 3, bias=True)
 
@@ -117,11 +117,11 @@ class DIIN(nn.Module):
         """
         #pdb.set_trace()
         bi_att_mx = bi_attention_mx(self.config, self.training, pre, hyp, p_mask=prem_mask, h_mask=hyp_mask) # [N, PL, HL]
-        print("bi_attention_mx", bi_att_mx.size()) # 70,448,48,48
+        #print("bi_attention_mx", bi_att_mx.size()) # 70,448,48,48
         bi_att_mx = F.dropout(bi_att_mx, p=self.dropout_rate, training=self.training)
 
         fm = self.interaction_cnn(bi_att_mx)
-        print('fm:',fm.size()) # [70, 134, 48, 48]
+        #print('fm:',fm.size()) # [70, 134, 48, 48]
         if self.config.first_scale_down_layer_relu:
             fm = F.relu(fm)
 
@@ -130,7 +130,7 @@ class DIIN(nn.Module):
 
         #print("dense_net", fm.size())
         #premise_final = self.dense_net(fm)
-        fm = fm.view(70, -1)
+        fm = fm.view(self.config.batch_size, -1)
         logits = self.test_linear(fm)
         #print("premise_final", premise_final.size())
         #premise_final = premise_final.view(self.config.batch_size, -1)
@@ -282,7 +282,7 @@ def fuse_gate(fuse_gate_linear, config, is_train, lhs, rhs, input_drop_prob):
     lhs_2 = linear(fuse_gate_linear, lhs, dim ,True, bias_start=0.0, squeeze=False, wd=config.wd, input_drop_prob=input_drop_prob, is_train=is_train)
     rhs_2 = linear(fuse_gate_linear, rhs, dim ,True, bias_start=0.0, squeeze=False, wd=config.wd, input_drop_prob=input_drop_prob, is_train=is_train)
     f = F.sigmoid(lhs_2 + rhs_2)
-    print(config.two_gate_fuse_gate)
+    #print(config.two_gate_fuse_gate)
     if config.two_gate_fuse_gate:
         lhs_3 = linear(fuse_gate_linear, lhs, dim ,True, bias_start=0.0, squeeze=False, wd=config.wd, input_drop_prob=input_drop_prob, is_train=is_train)
         rhs_3 = linear(fuse_gate_linear, rhs, dim ,True, bias_start=0.0, squeeze=False, wd=config.wd, input_drop_prob=input_drop_prob, is_train=is_train)
