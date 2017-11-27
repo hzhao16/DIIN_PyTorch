@@ -128,16 +128,16 @@ def get_minibatch(dataset, start_index, end_index, training=False):
 
     labels = torch.LongTensor(labels)
 
-    minibatch_premise_vectors = torch.stack([torch.from_numpy(v) for v in premise_vectors]).squeeze()
-    minibatch_hypothesis_vectors = torch.stack([torch.from_numpy(v) for v in hypothesis_vectors]).squeeze()
+    minibatch_premise_vectors = torch.stack([torch.from_numpy(v) for v in premise_vectors]).squeeze().type('torch.LongTensor')
+    minibatch_hypothesis_vectors = torch.stack([torch.from_numpy(v) for v in hypothesis_vectors]).squeeze().type('torch.LongTensor')
 
-    minibatch_pre_pos = torch.stack([torch.from_numpy(v) for v in premise_pos_vectors]).squeeze()
-    minibatch_hyp_pos = torch.stack([torch.from_numpy(v) for v in hypothesis_pos_vectors]).squeeze()
+    minibatch_pre_pos = torch.stack([torch.from_numpy(v) for v in premise_pos_vectors]).squeeze().type('torch.LongTensor')
+    minibatch_hyp_pos = torch.stack([torch.from_numpy(v) for v in hypothesis_pos_vectors]).squeeze().type('torch.LongTensor')
 
-    premise_char_vectors = torch.stack([torch.from_numpy(v) for v in premise_char_vectors]).squeeze()
-    hypothesis_char_vectors = torch.stack([torch.from_numpy(v) for v in hypothesis_char_vectors]).squeeze()
-    premise_exact_match = torch.stack([torch.from_numpy(v) for v in premise_exact_match]).squeeze()
-    hypothesis_exact_match = torch.stack([torch.from_numpy(v) for v in hypothesis_exact_match]).squeeze()
+    premise_char_vectors = torch.stack([torch.from_numpy(v) for v in premise_char_vectors]).squeeze().type('torch.LongTensor')
+    hypothesis_char_vectors = torch.stack([torch.from_numpy(v) for v in hypothesis_char_vectors]).squeeze().type('torch.LongTensor')
+    premise_exact_match = torch.stack([torch.from_numpy(v) for v in premise_exact_match]).squeeze().type('torch.LongTensor')
+    hypothesis_exact_match = torch.stack([torch.from_numpy(v) for v in hypothesis_exact_match]).squeeze().type('torch.LongTensor')
 
     return minibatch_premise_vectors, minibatch_hypothesis_vectors, labels, genres, \
         minibatch_pre_pos, minibatch_hyp_pos, pairIDs, premise_char_vectors, hypothesis_char_vectors, \
@@ -195,8 +195,8 @@ def train(model, loss_, optim, batch_size, config, train_mnli, train_snli, dev_m
             #self.saver.restore(self.sess, (ckpt_file + "_best"))
             model.load_state_dict(torch.load(ckpt_file + "_best"))
             completed = False
-            dev_acc_mat, dev_cost_mat, confmx = evaluate_classifier(classify, dev_mat, batch_size, completed, model, loss_)
-            best_dev_mismat, dev_cost_mismat, _ = evaluate_classifier(classify, dev_mismat, batch_size, completed, model, loss_)
+            dev_acc_mat, dev_cost_mat, confmx = evaluate_classifier(classify, dev_matched, batch_size, completed, model, loss_)
+            best_dev_mismat, dev_cost_mismat, _ = evaluate_classifier(classify, dev_mismatched, batch_size, completed, model, loss_)
             best_dev_snli, dev_cost_snli, _ = evaluate_classifier(classify, dev_snli, batch_size, completed, model, loss_)
             best_mtrain_acc, mtrain_cost, _ = evaluate_classifier(classify, train_mnli[0:5000], batch_size, completed, model, loss_)
             logger.Log("Confusion Matrix on dev-matched\n{}".format(confmx))
@@ -251,16 +251,16 @@ def train(model, loss_, optim, batch_size, config, train_mnli, train_snli, dev_m
                 minibatch_pre_pos.cuda(), minibatch_hyp_pos.cuda(), premise_char_vectors.cuda(), hypothesis_char_vectors.cuda(), \
                 premise_exact_match.cuda(), hypothesis_exact_match.cuda()           
 
-            minibatch_premise_vectors = Variable(minibatch_premise_vectors,requires_grad=True)
-            minibatch_hypothesis_vectors = Variable(minibatch_hypothesis_vectors,requires_grad=True)
+            minibatch_premise_vectors = Variable(minibatch_premise_vectors)
+            minibatch_hypothesis_vectors = Variable(minibatch_hypothesis_vectors)
 
-            minibatch_pre_pos = Variable(minibatch_pre_pos,requires_grad=False)
-            minibatch_hyp_pos = Variable(minibatch_hyp_pos,requires_grad=False)
+            minibatch_pre_pos = Variable(minibatch_pre_pos)
+            minibatch_hyp_pos = Variable(minibatch_hyp_pos)
 
             premise_char_vectors = Variable(premise_char_vectors)
             hypothesis_char_vectors = Variable(hypothesis_char_vectors)
-            premise_exact_match = Variable(premise_exact_match,requires_grad=False)
-            hypothesis_exact_match = Variable(hypothesis_exact_match,requires_grad=False)
+            premise_exact_match = Variable(premise_exact_match)
+            hypothesis_exact_match = Variable(hypothesis_exact_match)
 
             minibatch_labels = Variable(minibatch_labels)
 
@@ -275,7 +275,7 @@ def train(model, loss_, optim, batch_size, config, train_mnli, train_snli, dev_m
             #pdb.set_trace()
             #print(model.parameters())
             lossy = loss_(output, minibatch_labels)
-            logger.Log("loss", lossy.data[0])
+            logger.Log("loss{}".format(lossy.data[0]))
             lossy.backward()
             logger.Log("Finish backward{}".format(step))
             #torch.nn.utils.clip_grad_norm(model.parameters(), config.gradient_clip_value)
@@ -285,18 +285,20 @@ def train(model, loss_, optim, batch_size, config, train_mnli, train_snli, dev_m
             if step % display_step == 0:
                 logger.Log("Step: {} completed".format(step))
 
-            if step % eval_step == 0:
+            if step % eval_step == 1:
                 if config.training_completely_on_snli and dont_print_unnecessary_info:
                     dev_acc_mat = dev_cost_mat = 1.0
                 else:
-                    dev_acc_mat, dev_cost_mat, confmx = evaluate_classifier(classify, dev_mat, batch_size, completed, model, loss_)
+                    logger.Log("start eval dev_matched:") 
+                    dev_acc_mat, dev_cost_mat, confmx = evaluate_classifier(classify, dev_matched, batch_size, completed, model, loss_)
                     logger.Log("Confusion Matrix on dev-matched\n{}".format(confmx))
                 
                 if config.training_completely_on_snli:
+                    logger.Log("start eval dev_snli:") 
                     dev_acc_snli, dev_cost_snli, _ = evaluate_classifier(classify, dev_snli, batch_size, completed, model, loss_)
                     dev_acc_mismat, dev_cost_mismat = 0,0
                 elif not dont_print_unnecessary_info or 100 * (1 - best_dev_mat / dev_acc_mat) > 0.04:
-                    dev_acc_mismat, dev_cost_mismat, _ = evaluate_classifier(classify, dev_mismat, batch_size, completed, model, loss_)
+                    dev_acc_mismat, dev_cost_mismat, _ = evaluate_classifier(classify, dev_mismatched, batch_size, completed, model, loss_)
                     dev_acc_snli, dev_cost_snli, _ = evaluate_classifier(classify, dev_snli, batch_size, completed, model, loss_)
                 else:
                     dev_acc_mismat, dev_cost_mismat, dev_acc_snli, dev_cost_snli = 0,0,0,0
@@ -320,7 +322,7 @@ def train(model, loss_, optim, batch_size, config, train_mnli, train_snli, dev_m
                     logger.Log("Step: %i\t Dev-matched acc: %f\t Dev-mismatched acc: %f\t Dev-SNLI acc: %f\t MultiNLI train acc: %f" %(step, dev_acc_mat, dev_acc_mismat, dev_acc_snli, mtrain_acc))
                     logger.Log("Step: %i\t Dev-matched cost: %f\t Dev-mismatched cost: %f\t Dev-SNLI cost: %f\t MultiNLI train cost: %f" %(step, dev_cost_mat, dev_cost_mismat, dev_cost_snli, mtrain_cost))
             
-            if step % save_step == 0:
+            if step % save_step == 1:
                 torch.save(model, ckpt_file)
                 if config.training_completely_on_snli:
                     print("mtrain acc cal")
@@ -398,22 +400,24 @@ def classify(examples, completed, batch_size, model, loss_):
 
     total_batch = int(len(examples) / batch_size)
     pred_size = 3 
-    logits = np.empty(pred_size)
+    #logits = np.empty(pred_size)
+    total = 0
     genres = []
     costs = 0
-    
-    for i in tqdm(range(total_batch + 1)):
-        if i != total_batch:
-            minibatch_premise_vectors, minibatch_hypothesis_vectors, minibatch_labels, minibatch_genres, \
-            minibatch_pre_pos, minibatch_hyp_pos, pairIDs, premise_char_vectors, hypothesis_char_vectors, \
-            premise_exact_match, hypothesis_exact_match  = get_minibatch(
-                examples, batch_size * i, batch_size * (i + 1))
+    correct = 0
+    for i in range(total_batch):
+        #if i != total_batch:
+        minibatch_premise_vectors, minibatch_hypothesis_vectors, minibatch_labels, minibatch_genres, \
+        minibatch_pre_pos, minibatch_hyp_pos, pairIDs, premise_char_vectors, hypothesis_char_vectors, \
+        premise_exact_match, hypothesis_exact_match  = get_minibatch(
+            examples, batch_size * i, batch_size * (i + 1))
+        """
         else:
             minibatch_premise_vectors, minibatch_hypothesis_vectors, minibatch_labels, minibatch_genres, \
             minibatch_pre_pos, minibatch_hyp_pos, pairIDs, premise_char_vectors, hypothesis_char_vectors, \
             premise_exact_match, hypothesis_exact_match = get_minibatch(
                 examples, batch_size * i, len(examples))
-
+        """
             
         if config.cuda:
             minibatch_premise_vectors, minibatch_hypothesis_vectors, minibatch_labels, \
@@ -434,16 +438,25 @@ def classify(examples, completed, batch_size, model, loss_):
         hypothesis_exact_match = Variable(hypothesis_exact_match)
 
         minibatch_labels = Variable(minibatch_labels)
-
+        logger.Log("Classsify - finish loading")
         genres += minibatch_genres
+        logger.Log("genre".format(genres))
         logit = model(minibatch_premise_vectors, minibatch_hypothesis_vectors, \
             minibatch_pre_pos, minibatch_hyp_pos, premise_char_vectors, hypothesis_char_vectors, \
             premise_exact_match, hypothesis_exact_match)
-
+        logger.Log("Classsify - finish forward")
         cost = loss_(logit, minibatch_labels)
+        logger.Log("Classsify - finish cost")
         costs += cost
-        logits = np.vstack([logits, logit.data.numpy()])
-
+        predicted = torch.max(logit.data, 1)[1]
+        total += minibatch_labels.size(0)
+        #print(predicted)
+        #print(minibatch_labels.data)
+        correct += (predicted == minibatch_labels.data).sum()
+        logger.Log('correct'.format(correct))
+        #logits = np.vstack([logits, logit.data.numpy()])
+    return correct / float(total), costs, 0
+    '''
     if test == True:
         logger.Log("Generating Classification error analysis script")
         correct_file = open(os.path.join(FIXED_PARAMETERS["log_path"], "correctly_classified_pairs.txt"), 'w')
@@ -464,7 +477,8 @@ def classify(examples, completed, batch_size, model, loss_):
 
         correct_file.close()
         wrong_file.close()
-    return genres, np.argmax(logits[1:], axis=1), costs
+    '''
+    #return genres, np.argmax(logits[1:], axis=1), costs
 
 def generate_predictions_with_id(path, examples, completed, batch_size, model, loss_):
     if (test == True) or (completed == True):
@@ -537,15 +551,16 @@ optim = torch.optim.Adadelta(filter(lambda p: p.requires_grad, model.parameters(
 loss = nn.CrossEntropyLoss() 
 
 test = params.train_or_test()
+logger.Log('test'.format(test))
 
 if config.preprocess_data_only:
     pass
 elif test == False:
     train(model, loss, optim, batch_size, config, training_mnli, training_snli, dev_matched, dev_mismatched, dev_snli)
     completed = True
-    logger.Log("Acc on matched multiNLI dev-set: %s" %(evaluate_classifier(classify, dev_matched, FIXED_PARAMETERS["batch_size"]))[0], completed, model, loss)
-    logger.Log("Acc on mismatched multiNLI dev-set: %s" %(evaluate_classifier(classify, dev_mismatched, FIXED_PARAMETERS["batch_size"]))[0], completed, model, loss)
-    logger.Log("Acc on SNLI test-set: %s" %(evaluate_classifier(classify, test_snli, FIXED_PARAMETERS["batch_size"]))[0], completed, model, loss)
+    logger.Log("Acc on matched multiNLI dev-set: %s" %(evaluate_classifier(classify, dev_matched, FIXED_PARAMETERS["batch_size"], completed, model, loss)[0]))
+    logger.Log("Acc on mismatched multiNLI dev-set: %s" %(evaluate_classifier(classify, dev_mismatched, FIXED_PARAMETERS["batch_size"], completed, model, loss)[0]))
+    logger.Log("Acc on SNLI test-set: %s" %(evaluate_classifier(classify, test_snli, FIXED_PARAMETERS["batch_size"], completed, model, loss)[0]))
 
     if config.training_completely_on_snli:
         logger.Log("Generating SNLI dev pred")

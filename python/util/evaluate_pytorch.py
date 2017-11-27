@@ -19,37 +19,41 @@ def evaluate_classifier(classifier, eval_set, batch_size, completed, model, loss
     eval_set: the chosen evaluation set, for eg. the dev-set
     batch_size: the size of minibatches.
     """
-    correct = 0
-    genres, hypotheses, cost = classifier(eval_set, completed, batch_size, model, loss)
-    cost = cost / (len(eval_set) / batch_size)
+    acc,_,_ = classifier(eval_set, completed, batch_size, model, loss)
+    return acc,0,0
+    #correct = 0
+    #genres, hypotheses, cost = classifier(eval_set, completed, batch_size, model, loss)
+    #cost = cost / (len(eval_set) / batch_size)
     # full_batch = int(len(eval_set) / batch_size) * batch_size
 
-    confusion_matrix = [[0,0,0] for i in range(3)]
+    #confusion_matrix = [[0,0,0] for i in range(3)]
 
-    # confusion matrix
+   # confusion matrix
 
-    # label \ predict | entailment | neutral | contradiction
-    # -------------------------------------------------------
-    # entailment      |            |         |              
-    # neutral         |            |         |               
-    # contradiction   |            |         |               
+   # label \ predict | entailment | neutral | contradiction
+   # -------------------------------------------------------
+   # entailment      |            |         |              
+   # neutral         |            |         |               
+   # contradiction   |            |         |               
 
-    for i in range(hypotheses.shape[0]):
-        hypothesis = hypotheses[i]
-        label = eval_set[i]['label']
-        if hypothesis == label:
-            correct += 1 
-        confusion_matrix[label][hypothesis] += 1 
+    
+    #for i in range(hypotheses.shape[0]):
+    #    hypothesis = hypotheses[i]
+    #    label = eval_set[i]['label']
+    #    if hypothesis == label:
+    #        correct += 1 
+    #    confusion_matrix[label][hypothesis] += 1 
+    #
+    #confmx = """    label \ predict | entailment | neutral | contradiction
+    #-------------------------------------------------------
+    #entailment      |     {}     |    {}   |    {}        
+    #neutral         |     {}     |    {}   |    {}         
+    #contradiction   |     {}     |    {}   |    {}         """.format(\
+    #    confusion_matrix[0][0],confusion_matrix[0][1],confusion_matrix[0][2],\
+    #    confusion_matrix[1][0],confusion_matrix[1][1],confusion_matrix[1][2],\
+    #    confusion_matrix[2][0],confusion_matrix[2][1],confusion_matrix[2][2])
+    #return correct / float(hypotheses.shape[0]), cost, confmx
 
-    confmx = """    label \ predict | entailment | neutral | contradiction
-    -------------------------------------------------------
-    entailment      |     {}     |    {}   |    {}        
-    neutral         |     {}     |    {}   |    {}         
-    contradiction   |     {}     |    {}   |    {}         """.format(\
-        confusion_matrix[0][0],confusion_matrix[0][1],confusion_matrix[0][2],\
-        confusion_matrix[1][0],confusion_matrix[1][1],confusion_matrix[1][2],\
-        confusion_matrix[2][0],confusion_matrix[2][1],confusion_matrix[2][2])
-    return correct / float(hypotheses.shape[0]), cost, confmx
 
 def evaluate_classifier_genre(classifier, eval_set, batch_size):
     """

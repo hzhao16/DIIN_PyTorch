@@ -117,28 +117,27 @@ class DIIN(nn.Module):
         """
         #pdb.set_trace()
         bi_att_mx = bi_attention_mx(self.config, self.training, pre, hyp, p_mask=prem_mask, h_mask=hyp_mask) # [N, PL, HL]
-        #print("bi_attention_mx", type(bi_att_mx))
+        print("bi_attention_mx", bi_att_mx.size()) # 70,448,48,48
         bi_att_mx = F.dropout(bi_att_mx, p=self.dropout_rate, training=self.training)
 
-        fm = self.interaction_cnn(bi_att_mx.permute(0,3,1,2))
-        #print('fm:',fm.size()) # [70, 48, 48, 134]
+        fm = self.interaction_cnn(bi_att_mx)
+        print('fm:',fm.size()) # [70, 134, 48, 48]
         if self.config.first_scale_down_layer_relu:
             fm = F.relu(fm)
 
         #premise_final = dense_net(self.config, fm, self.training)
         #print("dense_net", type(premise_final))
 
-        print("dense_net", fm.size())
-        premise_final = self.dense_net(fm)
+        #print("dense_net", fm.size())
         #premise_final = self.dense_net(fm)
-        #fm = fm.view(70, -1)
-        #logits = self.test_linear(fm)
+        fm = fm.view(70, -1)
+        logits = self.test_linear(fm)
         #print("premise_final", premise_final.size())
-        premise_final = premise_final.view(self.config.batch_size, -1)
+        #premise_final = premise_final.view(self.config.batch_size, -1)
         #print("premise_final", premise_final.size())
 
-        logits = linear(self.final_linear, [premise_final], self.pred_size ,True, bias_start=0.0, squeeze=False, wd=self.config.wd, input_drop_prob=self.config.keep_rate,
-                                is_train=self.training)
+        #logits = linear(self.final_linear, [premise_final], self.pred_size ,True, bias_start=0.0, squeeze=False, wd=self.config.wd, input_drop_prob=self.config.keep_rate,
+                                #is_train=self.training)
 
         return logits
 
@@ -149,14 +148,15 @@ class DIIN(nn.Module):
         word_len = premise_char.size(2)
 
         premise_char = premise_char.view(-1, word_len) # (N*seq_len, word_len)
-        char_pre = self.char_emb_init(premise_char.type('torch.LongTensor')) # (N*seq_len, word_len, embd_size)
-        char_pre = char_pre.view(*input_shape, -1) # (N, seq_len, word_len, embd_size)
-        #char_pre = char_pre.sum(2) # (N, seq_len, embd_size)
+        char_pre = self.char_emb_init(premise_char)#.type('torch.LongTensor')) # (N*seq_len, word_len, embd_size)
+        #char_pre = char_pre.view(*input_shape, -1) # (N, seq_len, word_len, embd_size)
+        char_pre = char_pre.view(bs, -1, seq_len, word_len)
 
         hypothesis_char = hypothesis_char.view(-1, word_len)
-        char_hyp = self.char_emb_init(hypothesis_char.type('torch.LongTensor'))
-        char_hyp = char_hyp.view(*input_shape, -1) # (N, seq_len, word_len, embd_size)
-        #char_hyp = char_hyp.sum(2) # (N, seq_len, embd_size)
+        char_hyp = self.char_emb_init(hypothesis_char)#.type('torch.LongTensor'))
+        char_hyp = char_hyp.view(bs, -1, seq_len, word_len)
+
+        #char_hyp = char_hyp.view(*input_shape, -1) # (N, seq_len, word_len, embd_size)
 
         filter_sizes = list(map(int, self.config.out_channel_dims.split(','))) #[100]
         #print('filter:',filter_sizes)
@@ -170,10 +170,10 @@ class DIIN(nn.Module):
             for filter_size, height in zip(filter_sizes, heights):
                 if filter_size == 0:
                     continue
-                char_pre = F.dropout2d(char_pre, p=self.dropout_rate, training=self.training) #[70, 48, 16, 8]
+                char_pre = F.dropout2d(char_pre, p=self.dropout_rate, training=self.training) #[70, 48, 16, 8] --
                 #print('char_pre:', char_pre.size())
                 #cnn2d = nn.Conv2d(char_pre.size()[-1], filter_size, (1, height), stride=(1, 1, 1, 1), padding=0, bias=True)
-                cnn_pre = self.char_emb_cnn(char_pre.permute(0,3,1,2)) #[70, 100, 48, 12]
+                cnn_pre = self.char_emb_cnn(char_pre) #[70, 100, 48, 12]
                 #print('cnn_pre:',cnn_pre.size())  
                 out = torch.max(F.relu(cnn_pre), 3)[0]  #[70, 100, 48]
                 #print('out:',out.size()) 
@@ -376,7 +376,7 @@ def softmax(logits, mask=None):
     return out
 
 def bi_attention_mx(config, is_train, p, h, p_mask=None, h_mask=None): #[N, L, 2d]
-    PL = p.size()[1]
+    PL = p.size()[1] 
     HL = h.size()[1]
     p_aug = torch.unsqueeze(p, 2).repeat(1,1,HL,1)
     h_aug = torch.unsqueeze(h, 1).repeat(1,PL,1,1) #[N, PL, HL, 2d]
@@ -392,8 +392,9 @@ def bi_attention_mx(config, is_train, p, h, p_mask=None, h_mask=None): #[N, L, 2
     ph_mask = None##########################??????????????????????
     """
     h_logits = p_aug * h_aug
-    #print('h_logis',h_logits.size())    
-    return h_logits
+    #print('bi_attention_out',h_logits.size()) [70,48,48,448]
+    h_logits = h_logits.view(config.batch_size, -1, PL, HL)
+    return h_logits 
 
 class Dense_net_block(nn.Module):
     def __init__(self, outChannels, growth_rate, kernel_size):
