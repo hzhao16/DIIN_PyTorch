@@ -139,7 +139,7 @@ def get_minibatch(dataset, start_index, end_index, training=False):
 
     premise_char_vectors = torch.stack([torch.from_numpy(v) for v in premise_char_vectors]).squeeze().type('torch.LongTensor')
     hypothesis_char_vectors = torch.stack([torch.from_numpy(v) for v in hypothesis_char_vectors]).squeeze().type('torch.LongTensor')
-    
+
     premise_exact_match = torch.stack([torch.from_numpy(v) for v in premise_exact_match]).squeeze().type('torch.FloatTensor')
     hypothesis_exact_match = torch.stack([torch.from_numpy(v) for v in hypothesis_exact_match]).squeeze().type('torch.FloatTensor')
 
@@ -462,7 +462,10 @@ def classify(examples, completed, batch_size, model, loss_):
         #print(minibatch_labels.data)
         #correct += (predicted == minibatch_labels.data).sum()
         #logger.Log('correct'.format(correct))
-        logits = np.vstack([logits, logit.data.numpy()])
+        if config.cuda:
+            logits = np.vstack([logits, logit.data.cpu().numpy()])
+        else：
+            logits = np.vstack([logits, logit.data.numpy()])
     
     '''
     if test == True:
