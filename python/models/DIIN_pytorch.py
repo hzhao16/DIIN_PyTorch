@@ -25,7 +25,7 @@ class DIIN(nn.Module):
         self.config = config
         #self.dropout = nn.Dropout(p=0.0)
 
-        self.char_emb_cnn = nn.Conv2d(8, 100, (1, 5), stride=(1, 1, 1, 1), padding=0, bias=True)
+        self.char_emb_cnn = nn.Conv2d(8, 100, (1, 5), stride=(1, 1), padding=0, bias=True)
         self.interaction_cnn = nn.Conv2d(448, int(448 * config.dense_net_first_scale_down_ratio), config.first_scale_down_kernel, padding=0)
 
         self.highway_network_linear = nn.Linear(448, 448, bias=True)
@@ -75,9 +75,9 @@ class DIIN(nn.Module):
         #print(self.dropout_rate)
         #print(self.training)
         #print(premise_x.size(),hypothesis_x.size())
-        premise_in = F.dropout(self.emb(premise_x.type('torch.LongTensor')), p = self.dropout_rate,  training=self.training)
+        premise_in = F.dropout(self.emb(premise_x), p = self.dropout_rate,  training=self.training)
         #print(premise_in.size())
-        hypothesis_in = F.dropout(self.emb(hypothesis_x.type('torch.LongTensor')), p = self.dropout_rate,  training=self.training)
+        hypothesis_in = F.dropout(self.emb(hypothesis_x), p = self.dropout_rate,  training=self.training)
         #print("premise_in", type(premise_in))
         #print("premise_char_vectors size", premise_char_vectors.size()) #[70, 48, 16]
         conv_pre, conv_hyp = self.char_emb(premise_char_vectors, hypothesis_char_vectors)
@@ -86,20 +86,20 @@ class DIIN(nn.Module):
         premise_in = torch.cat([premise_in, conv_pre], 2) #[70, 48, 300], [70, 48, 100] --> [70,48,400]
         hypothesis_in = torch.cat([hypothesis_in, conv_hyp], 2)
 
-        pre_pos = pre_pos.type('torch.FloatTensor')
+        #pre_pos = pre_pos.type('torch.FloatTensor')
         #print("pre_pos size:", pre_pos.size())
         #print("pre_pos", pre_pos)
         premise_in = torch.cat([premise_in, pre_pos], 2) # 70*48*447
         #print(premise_in.size()) 
-        hyp_pos = hyp_pos.type('torch.FloatTensor')
+        #hyp_pos = hyp_pos.type('torch.FloatTensor')
         hypothesis_in = torch.cat([hypothesis_in, hyp_pos], 2)
 
-        premise_exact_match = torch.unsqueeze(premise_exact_match.type('torch.FloatTensor'),2) #70*48*1
+        premise_exact_match = torch.unsqueeze(premise_exact_match,2) #70*48*1
         #print("premise_exact_match size:", premise_exact_match.size()) 
         #print("premise_exact_match: ", premise_exact_match)
         premise_in = torch.cat([premise_in, premise_exact_match], 2) #70*48*448
         #print(premise_in.size())
-        hypothesis_exact_match = torch.unsqueeze(hypothesis_exact_match.type('torch.FloatTensor'),2)
+        hypothesis_exact_match = torch.unsqueeze(hypothesis_exact_match,2)
         hypothesis_in = torch.cat([hypothesis_in, hypothesis_exact_match], 2) #70*48*448
         
 
@@ -267,6 +267,8 @@ def self_attention(linear_layer, config, is_train, p, p_mask=None): #[N, L, 2d]
         p_mask_aug_1 = torch.unsqueeze(p_mask, 2).repeat(1, 1, PL, 1).data.numpy().any(axis=3)
         p_mask_aug_2 = torch.unsqueeze(p_mask, 1).repeat(1, PL, 1, 1).data.numpy().any(axis=3)
         self_mask = Variable(torch.from_numpy((p_mask_aug_1 & p_mask_aug_2).astype(int)).type('torch.IntTensor'), requires_grad=False)
+        if config.cuda:
+            self_mask = self_mask.cuda()
     #print(self_mask)
 
     h_logits = get_logits(linear_layer, [p_aug_1, p_aug_2], None, True, wd=config.wd, mask=self_mask,

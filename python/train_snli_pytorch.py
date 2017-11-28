@@ -134,13 +134,14 @@ def get_minibatch(dataset, start_index, end_index, training=False):
     minibatch_premise_vectors = torch.stack([torch.from_numpy(v) for v in premise_vectors]).squeeze().type('torch.LongTensor')
     minibatch_hypothesis_vectors = torch.stack([torch.from_numpy(v) for v in hypothesis_vectors]).squeeze().type('torch.LongTensor')
 
-    minibatch_pre_pos = torch.stack([torch.from_numpy(v) for v in premise_pos_vectors]).squeeze().type('torch.LongTensor')
-    minibatch_hyp_pos = torch.stack([torch.from_numpy(v) for v in hypothesis_pos_vectors]).squeeze().type('torch.LongTensor')
+    minibatch_pre_pos = torch.stack([torch.from_numpy(v) for v in premise_pos_vectors]).squeeze().type('torch.FloatTensor')
+    minibatch_hyp_pos = torch.stack([torch.from_numpy(v) for v in hypothesis_pos_vectors]).squeeze().type('torch.FloatTensor')
 
     premise_char_vectors = torch.stack([torch.from_numpy(v) for v in premise_char_vectors]).squeeze().type('torch.LongTensor')
     hypothesis_char_vectors = torch.stack([torch.from_numpy(v) for v in hypothesis_char_vectors]).squeeze().type('torch.LongTensor')
-    premise_exact_match = torch.stack([torch.from_numpy(v) for v in premise_exact_match]).squeeze().type('torch.LongTensor')
-    hypothesis_exact_match = torch.stack([torch.from_numpy(v) for v in hypothesis_exact_match]).squeeze().type('torch.LongTensor')
+    
+    premise_exact_match = torch.stack([torch.from_numpy(v) for v in premise_exact_match]).squeeze().type('torch.FloatTensor')
+    hypothesis_exact_match = torch.stack([torch.from_numpy(v) for v in hypothesis_exact_match]).squeeze().type('torch.FloatTensor')
 
     return minibatch_premise_vectors, minibatch_hypothesis_vectors, labels, \
         minibatch_pre_pos, minibatch_hyp_pos, pairIDs, premise_char_vectors, hypothesis_char_vectors, \
