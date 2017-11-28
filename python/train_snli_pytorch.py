@@ -464,7 +464,7 @@ def classify(examples, completed, batch_size, model, loss_):
         #logger.Log('correct'.format(correct))
         if config.cuda:
             logits = np.vstack([logits, logit.data.cpu().numpy()])
-        else：
+        else:
             logits = np.vstack([logits, logit.data.numpy()])
     
     '''
