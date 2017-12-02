@@ -115,7 +115,7 @@ def get_minibatch(dataset, start_index, end_index, training=False):
 
     premise_char_vectors = torch.stack([torch.from_numpy(v) for v in premise_char_vectors]).squeeze().type('torch.LongTensor')
     hypothesis_char_vectors = torch.stack([torch.from_numpy(v) for v in hypothesis_char_vectors]).squeeze().type('torch.LongTensor')
-    
+
     premise_exact_match = torch.stack([torch.from_numpy(v) for v in premise_exact_match]).squeeze().type('torch.FloatTensor')
     hypothesis_exact_match = torch.stack([torch.from_numpy(v) for v in hypothesis_exact_match]).squeeze().type('torch.FloatTensor')
 
@@ -383,7 +383,41 @@ def classify(examples, completed, batch_size, model, loss_):
 
         cost = loss_(logit, minibatch_labels).data[0]
         costs += cost
-        logits = np.vstack([logits, logit.data.numpy()])
+
+        #predicted = torch.max(logit.data, 1)[1]
+        #total += minibatch_labels.size(0)
+        #return correct / float(total), costs, 0
+        #print(predicted)
+        #print(minibatch_labels.data)
+        #correct += (predicted == minibatch_labels.data).sum()
+        #logger.Log('correct'.format(correct))
+        if config.cuda:
+            logits = np.vstack([logits, logit.data.cpu().numpy()])
+        else:
+            logits = np.vstack([logits, logit.data.numpy()])
+    
+    '''
+    if test == True:
+        logger.Log("Generating Classification error analysis script")
+        correct_file = open(os.path.join(FIXED_PARAMETERS["log_path"], "correctly_classified_pairs.txt"), 'w')
+        wrong_file = open(os.path.join(FIXED_PARAMETERS["log_path"], "wrongly_classified_pairs.txt"), 'w')
+
+        pred = np.argmax(logits[1:], axis=1)
+        LABEL = ["entailment", "neutral", "contradiction"]
+        for i in range(pred.shape[0]):
+            if pred[i] == examples[i]["label"]:
+                fh = correct_file
+            else:
+                fh = wrong_file
+            fh.write("S1: {}\n".format(examples[i]["sentence1"].encode('utf-8')))
+            fh.write("S2: {}\n".format(examples[i]["sentence2"].encode('utf-8')))
+            fh.write("Label:      {}\n".format(examples[i]['gold_label']))
+            fh.write("Prediction: {}\n".format(LABEL[pred[i]]))
+            fh.write("confidence: \nentailment: {}\nneutral: {}\ncontradiction: {}\n\n".format(logits[1+i, 0], logits[1+i,1], logits[1+i,2]))
+
+        correct_file.close()
+        wrong_file.close()
+    '''
     return genres, np.argmax(logits[1:], axis=1), costs
 
 def generate_predictions_with_id(path, examples, completed, batch_size, model, loss_):
