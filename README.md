@@ -1,6 +1,6 @@
 # DIIN_PyTorch
 
-  We followed the idea from the following refenrence and reimplemented the code in Pytorch from: https://github.com/YichenGong/Densely-Interactive-Inference-Network
+  We followed the idea from: : https://github.com/YichenGong/Densely-Interactive-Inference-Network and reimplemented the code in Pytorch.
 
   To implement our code, you can follow the instructions from: https://github.com/YichenGong/Densely-Interactive-Inference-Network to set up environment and download data.
 
